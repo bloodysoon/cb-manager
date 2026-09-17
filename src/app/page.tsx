@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-type Model = { name: string; image_url: string }
+type Model = { name: string; image_url: string; attemp?: number }
 
 const STATUS_OPTIONS = [
   { value: 'no_content', label: 'No content', color: 'bg-gray-500 hover:bg-gray-600' },
@@ -26,6 +26,8 @@ const STATUS_OPTIONS = [
 export default function Home() {
   const [models, setModels] = useState<Model[]>([])
   const [statuses, setStatuses] = useState<Record<string, string>>({})
+  const [attempts, setAttempts] = useState<Record<string, number>>({})
+  const [checking, setChecking] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [page, setPage] = useState(1)
@@ -40,6 +42,13 @@ export default function Home() {
       if (!res.ok) throw new Error('Failed to load')
       const data = await res.json()
       setModels(data)
+      setAttempts(prev => {
+        const next = { ...prev }
+        for (const m of data as Model[]) {
+          if (typeof m.attemp === 'number') next[m.name] = m.attemp
+        }
+        return next
+      })
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -61,6 +70,24 @@ export default function Home() {
       setError(err.message)
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const incrementAttempt = async (name: string) => {
+    setChecking(prev => ({ ...prev, [name]: true }))
+    try {
+      const res = await fetch('/api/increment-attempt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!res.ok) throw new Error('Increment failed')
+      const data = await res.json()
+      setAttempts(prev => ({ ...prev, [name]: data.attemp }))
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setChecking(prev => ({ ...prev, [name]: false }))
     }
   }
 
@@ -118,6 +145,7 @@ export default function Home() {
             <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-[6px]'>
               {models.map((m, i) => {
                 const st = STATUS_OPTIONS.find(o => o.value === statuses[m.name])
+                const attempt = attempts[m.name] ?? m.attemp ?? 0
                 return (
                   <Card
                     key={m.name}
@@ -151,6 +179,11 @@ export default function Home() {
                         >
                           {m.name}
                         </a>
+                        {attempt > 1 && (
+                          <Badge className='bg-[#0c6a93] text-white text-[10px] font-bold px-1.5 py-0 rounded-sm border-0 shrink-0'>
+                            x{attempt}
+                          </Badge>
+                        )}
                         <span className='ml-auto text-[11px] text-gray-500 font-semibold'>{18 + ((i * 7) % 12)}</span>
                         <svg viewBox='0 0 24 24' className='w-3.5 h-3.5 shrink-0 fill-[#d8618f]'>
                           <path d='M12 4a4 4 0 110 8 4 4 0 010-8zm0 10c4.42 0 8 1.79 8 4v2H4v-2c0-2.21 3.58-4 8-4z'/>
@@ -178,6 +211,15 @@ export default function Home() {
                           <path d='M17 10.5V7a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h12a1 1 0 001-1v-3.5l4 4v-11l-4 4z'/>
                         </svg>
                         <span>{((i * 13) % 60) / 10 + 0.5} hrs, {(1000 + i * 1837).toLocaleString()} viewers</span>
+                        <Button
+                          onClick={() => incrementAttempt(m.name)}
+                          disabled={checking[m.name]}
+                          size='sm'
+                          variant='outline'
+                          className='ml-auto h-5 px-1.5 text-[10px] font-bold text-[#0c6a93] border-[#d6d6d6] hover:bg-gray-50 rounded-sm'
+                        >
+                          {checking[m.name] ? <Loader2 className='w-3 h-3 animate-spin' /> : 'CHECK'}
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
